@@ -323,6 +323,82 @@ def _upsert_df(
     return rows
 
 
+def _apply_nutrition_targets(
+    conn: duckdb.DuckDBPyConnection,
+    targets_df: pd.DataFrame,
+) -> int:
+    """Resolve per-day calorie and protein targets from Nutrition Program Settings.
+
+    MacroFactor stores targets as (program_update_date, weekday) pairs.
+    For each date in daily_summary, we find the most recent program that was
+    active on that date and look up the matching weekday row.
+
+    Returns the number of daily_summary rows updated.
+    """
+    # Column names after normalisation (unit suffixes stripped)
+    date_col = "Program Update Date"
+    weekday_col = "Program Weekday"
+    cal_col = "Calories"
+    protein_col = "Protein"
+
+    required = {date_col, weekday_col, cal_col, protein_col}
+    if not required.issubset(targets_df.columns):
+        logger.warning(
+            "Nutrition Program Settings missing columns: %s",
+            required - set(targets_df.columns),
+        )
+        return 0
+
+    # Parse dates (DD/MM/YYYY format)
+    targets_df = targets_df.copy()
+    targets_df["_update_date"] = pd.to_datetime(
+        targets_df[date_col], format="%d/%m/%Y"
+    ).dt.date
+
+    # Sort by update date descending so we can iterate newest-first
+    update_dates = sorted(targets_df["_update_date"].unique(), reverse=True)
+
+    # Build lookup: {(update_date, weekday_name) -> (calories, protein)}
+    lookup: dict[tuple, tuple] = {}
+    for _, row in targets_df.iterrows():
+        key = (row["_update_date"], row[weekday_col])
+        lookup[key] = (row[cal_col], row[protein_col])
+
+    # Get all dates from daily_summary
+    summary_dates = conn.execute(
+        "SELECT date FROM daily_summary ORDER BY date"
+    ).fetchall()
+
+    weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    updated = 0
+
+    for (d,) in summary_dates:
+        # Find the most recent program update <= this date
+        active_update = None
+        for ud in update_dates:
+            if ud <= d:
+                active_update = ud
+                break
+
+        if active_update is None:
+            continue
+
+        wday = weekday_names[d.weekday()]
+        targets = lookup.get((active_update, wday))
+        if targets is None:
+            continue
+
+        cal_target, protein_target = targets
+        conn.execute(
+            "UPDATE daily_summary SET calorie_target = ?, protein_target_g = ? WHERE date = ?",
+            [cal_target, protein_target, d],
+        )
+        updated += 1
+
+    logger.info("Updated %d daily_summary rows with calorie/protein targets", updated)
+    return updated
+
+
 def _ingest_bulk(
     conn: duckdb.DuckDBPyConnection,
     xlsx_path: str,
@@ -400,6 +476,17 @@ def _ingest_bulk(
             stats["expenditure_updates"] = len(exp_df)
     except Exception as e:
         logger.warning("Skipping 'Expenditure' sheet: %s", e)
+
+    # --- Nutrition Program Settings -> calorie/protein targets ---------------
+    try:
+        targets_df = _normalize_columns(
+            pd.read_excel(xlsx_path, sheet_name="Nutrition Program Settings", engine="openpyxl")
+        )
+        if not targets_df.empty:
+            updates = _apply_nutrition_targets(conn, targets_df)
+            stats["target_updates"] = updates
+    except Exception as e:
+        logger.warning("Skipping 'Nutrition Program Settings' sheet: %s", e)
 
     return stats
 
