@@ -12,7 +12,7 @@
         <string>/bin/bash</string>
         <string>-l</string>
         <string>-c</string>
-        <string>/Users/ben/projects/macroclaw/sikuli/scripts/daily_export.sh</string>
+        <string>/Users/ben/Library/Python/3.11/bin/macroclaw auto daily</string>
     </array>
 
     <!-- Run every day at 21:00 (9 PM) -->

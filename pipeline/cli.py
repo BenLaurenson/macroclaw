@@ -290,3 +290,9 @@ def status(ctx: click.Context) -> None:
             )
 
     conn.close()
+
+
+# Register automation subcommands
+from automation.cli import auto_group  # noqa: E402
+
+cli.add_command(auto_group)
