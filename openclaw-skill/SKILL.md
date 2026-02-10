@@ -5,17 +5,17 @@ metadata:
     requires:
       bins:
         - python3
-        - java
       env:
         - MACROCLAW_DB_PATH
-    install: "pip3 install -e ~/projects/macroclaw"
+        - ANTHROPIC_API_KEY
+    install: "pip3 install -e ~/Projects/macroclaw"
 ---
 
 # MacroClaw - Fitness Dashboard
 
 Query and display nutrition, workout, and weight-tracking data from the MacroClaw
-pipeline.  MacroClaw ingests daily exports from MacroFactor (via SikuliX
-automation) into a local DuckDB database and exposes the data through a CLI.
+pipeline.  MacroClaw ingests daily exports from MacroFactor (via Claude Computer
+Use AI automation) into a local DuckDB database and exposes the data through a CLI.
 Use this skill whenever the user asks about their food intake, macronutrient
 adherence, workout history, body-weight trends, or overall fitness progress.
 
@@ -113,10 +113,10 @@ Aggregate the data into sections:
 
 ### sync / force export
 
-Manually trigger the SikuliX daily export script.
+Manually trigger the AI-driven export.
 
 ```
-~/projects/macroclaw/sikuli/scripts/daily_export.sh
+source ~/.config/clawdbot/env && /Users/ben/Library/Python/3.11/bin/macroclaw auto export-daily --model claude-sonnet-4-5
 ```
 
 Use this when the user explicitly requests a fresh data pull from MacroFactor.
