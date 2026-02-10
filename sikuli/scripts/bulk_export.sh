@@ -12,7 +12,7 @@ CONFIG_FILE="$PROJECT_DIR/config/sikuli_config.yaml"
 
 # --- Defaults (override via config or environment) --------------------------
 
-SIKULIX_JAR="${SIKULIX_JAR:-$HOME/sikulixide-2.0.6.jar}"
+SIKULIX_JAR="${SIKULIX_JAR:-$HOME/sikulixide-2.0.5-mac.jar}"
 JAVA_BIN="${JAVA_HOME:+$JAVA_HOME/bin/java}"
 JAVA_BIN="${JAVA_BIN:-java}"
 
