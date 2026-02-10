@@ -8,6 +8,7 @@ via file hashing, and archival of processed files.
 import hashlib
 import json
 import logging
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +30,18 @@ _NUTRITION_SIGNATURES = {"Calories", "Protein", "Carbs", "Fat"}
 _WORKOUT_SIGNATURES = {"Exercise Name", "Reps", "Weight"}
 _WEIGHT_SIGNATURES = {"Scale Weight", "Trend Weight"}
 _SUMMARY_SIGNATURES = {"Calorie Target", "Expenditure"}
+
+# ---------------------------------------------------------------------------
+# Sheets in the MacroFactor all-time (bulk) export that we can ingest.
+# ---------------------------------------------------------------------------
+
+_BULK_SHEET_MAP: dict[str, str] = {
+    "Calories & Macros": "summary",
+    "Scale Weight": "weight_scale",
+    "Weight Trend": "weight_trend",
+    "Expenditure": "expenditure",
+    "Nutrition Program Settings": "targets",
+}
 
 # ---------------------------------------------------------------------------
 # Column mappings: MacroFactor header -> DuckDB column
@@ -94,6 +107,25 @@ def _file_hash(path: str) -> str:
         for chunk in iter(lambda: f.read(1 << 16), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Strip unit suffixes like ``(kcal)``, ``(g)``, ``(kg)`` from column names.
+
+    MacroFactor bulk (all-time) exports use headers like ``Calories (kcal)``
+    and ``Protein (g)`` while daily exports use plain ``Calories`` and
+    ``Protein``.  This normalises them to the plain form so the existing
+    column maps work unchanged.
+    """
+    rename = {}
+    for col in df.columns:
+        cleaned = re.sub(r"\s*\([^)]*\)\s*$", "", col).strip()
+        if cleaned != col:
+            rename[col] = cleaned
+    if rename:
+        logger.debug("Normalised columns: %s", rename)
+        df = df.rename(columns=rename)
+    return df
 
 
 def _detect_export_type(columns: list[str]) -> str:
@@ -252,6 +284,126 @@ _EXPECTED_COLUMNS: dict[str, list[str]] = {
 # ---------------------------------------------------------------------------
 
 
+def _is_bulk_export(xlsx_path: str) -> bool:
+    """Return True if the workbook contains multiple MacroFactor sheets."""
+    from openpyxl import load_workbook
+
+    wb = load_workbook(xlsx_path, read_only=True)
+    names = set(wb.sheetnames)
+    wb.close()
+    return bool(names & set(_BULK_SHEET_MAP))
+
+
+def _upsert_df(
+    conn: duckdb.DuckDBPyConnection,
+    staging_df: pd.DataFrame,
+    etype: str,
+    source: str,
+) -> int:
+    """Upsert a prepared DataFrame into the appropriate table.
+
+    Returns the number of rows inserted.
+    """
+    expected = _EXPECTED_COLUMNS[etype]
+    for col in expected:
+        if col not in staging_df.columns:
+            staging_df[col] = None
+    staging_df = staging_df[expected]
+
+    staging_df["date"] = pd.to_datetime(staging_df["date"]).dt.date
+
+    rows = len(staging_df)
+    if rows == 0:
+        return 0
+
+    logger.info("Inserting %d rows into %s table", rows, etype)
+    conn.register("staging_df", staging_df)
+    conn.execute(_UPSERT_SQL[etype])
+    conn.unregister("staging_df")
+    return rows
+
+
+def _ingest_bulk(
+    conn: duckdb.DuckDBPyConnection,
+    xlsx_path: str,
+) -> dict[str, int]:
+    """Process a MacroFactor all-time (bulk) export with multiple sheets.
+
+    Returns a dict mapping table name to rows imported.
+    """
+    source = Path(xlsx_path).name
+    stats: dict[str, int] = {}
+
+    # --- Calories & Macros -> daily_summary (nutrition totals per day) ------
+    try:
+        macros_df = _normalize_columns(
+            pd.read_excel(xlsx_path, sheet_name="Calories & Macros", engine="openpyxl")
+        )
+        if not macros_df.empty:
+            summary_df = _prepare_summary(macros_df, source)
+            stats["summary"] = _upsert_df(conn, summary_df, "summary", source)
+    except Exception as e:
+        logger.warning("Skipping 'Calories & Macros' sheet: %s", e)
+
+    # --- Scale Weight + Weight Trend -> weight_log --------------------------
+    try:
+        scale_df = _normalize_columns(
+            pd.read_excel(xlsx_path, sheet_name="Scale Weight", engine="openpyxl")
+        )
+        # Rename 'Weight' to 'Scale Weight' if needed (bulk uses "Weight (kg)")
+        if "Weight" in scale_df.columns and "Scale Weight" not in scale_df.columns:
+            scale_df = scale_df.rename(columns={"Weight": "Scale Weight"})
+    except Exception as e:
+        logger.warning("Skipping 'Scale Weight' sheet: %s", e)
+        scale_df = pd.DataFrame()
+
+    try:
+        trend_df = _normalize_columns(
+            pd.read_excel(xlsx_path, sheet_name="Weight Trend", engine="openpyxl")
+        )
+        if "Trend Weight" not in trend_df.columns:
+            # Bulk export names it just "Trend Weight (kg)" -> normalized to "Trend Weight"
+            for col in trend_df.columns:
+                if col != "Date":
+                    trend_df = trend_df.rename(columns={col: "Trend Weight"})
+                    break
+    except Exception as e:
+        logger.warning("Skipping 'Weight Trend' sheet: %s", e)
+        trend_df = pd.DataFrame()
+
+    if not scale_df.empty or not trend_df.empty:
+        # Merge scale and trend on Date
+        if not scale_df.empty and not trend_df.empty:
+            weight_df = pd.merge(scale_df[["Date", "Scale Weight"]], trend_df[["Date", "Trend Weight"]], on="Date", how="outer")
+        elif not scale_df.empty:
+            weight_df = scale_df[["Date", "Scale Weight"]].copy()
+            weight_df["Trend Weight"] = None
+        else:
+            weight_df = trend_df[["Date", "Trend Weight"]].copy()
+            weight_df["Scale Weight"] = None
+
+        prepared = _prepare_weight(weight_df, source)
+        stats["weight"] = _upsert_df(conn, prepared, "weight", source)
+
+    # --- Expenditure -> merge into daily_summary ----------------------------
+    try:
+        exp_df = _normalize_columns(
+            pd.read_excel(xlsx_path, sheet_name="Expenditure", engine="openpyxl")
+        )
+        if not exp_df.empty and "Expenditure" in exp_df.columns:
+            exp_df["date"] = pd.to_datetime(exp_df["Date"]).dt.date
+            for _, row in exp_df.iterrows():
+                conn.execute(
+                    "UPDATE daily_summary SET expenditure_kcal = ? WHERE date = ?",
+                    [row["Expenditure"], row["date"]],
+                )
+            stats["expenditure_updates"] = len(exp_df)
+    except Exception as e:
+        logger.warning("Skipping 'Expenditure' sheet: %s", e)
+
+    return stats
+
+
 def ingest_xlsx(
     db_path: str,
     xlsx_path: str,
@@ -259,6 +411,9 @@ def ingest_xlsx(
     archive_dir: str | None = None,
 ) -> dict[str, Any]:
     """Read a MacroFactor .xlsx export and load it into DuckDB.
+
+    Automatically detects whether the file is a single-sheet daily export
+    or a multi-sheet all-time (bulk) export.
 
     Args:
         db_path: Path to the DuckDB database file.
@@ -294,8 +449,35 @@ def ingest_xlsx(
             "skipped": True,
         }
 
-    # Read Excel
+    # Detect bulk vs single-sheet export
+    if export_type is None and _is_bulk_export(xlsx_path):
+        logger.info("Detected bulk (all-time) export — processing multiple sheets")
+        sheet_stats = _ingest_bulk(conn, xlsx_path)
+        total_rows = sum(sheet_stats.values())
+
+        conn.execute(
+            "INSERT INTO export_history (export_type, file_path, file_hash, rows_imported) "
+            "VALUES (?, ?, ?, ?)",
+            ["bulk", xlsx_path, fhash, total_rows],
+        )
+        conn.close()
+        logger.info("Bulk ingestion complete: %s", sheet_stats)
+
+        if archive_dir:
+            _archive_file(xlsx_path, archive_dir)
+
+        return {
+            "export_type": "bulk",
+            "rows_imported": total_rows,
+            "file_hash": fhash,
+            "file_path": xlsx_path,
+            "skipped": False,
+            "sheet_stats": sheet_stats,
+        }
+
+    # Single-sheet export path
     df = pd.read_excel(xlsx_path, engine="openpyxl")
+    df = _normalize_columns(df)
     logger.info("Read %d rows and %d columns from %s", len(df), len(df.columns), xlsx_path)
 
     if df.empty:
@@ -329,23 +511,7 @@ def ingest_xlsx(
     source = Path(xlsx_path).name
     staging_df = preparers[etype](df, source)
 
-    # Ensure column order matches the INSERT statement
-    expected = _EXPECTED_COLUMNS[etype]
-    for col in expected:
-        if col not in staging_df.columns:
-            staging_df[col] = None
-    staging_df = staging_df[expected]
-
-    # Parse date column to proper date type
-    staging_df["date"] = pd.to_datetime(staging_df["date"]).dt.date
-
-    rows_imported = len(staging_df)
-    logger.info("Inserting %d rows into %s table", rows_imported, etype)
-
-    # Register as virtual table and upsert
-    conn.register("staging_df", staging_df)
-    conn.execute(_UPSERT_SQL[etype])
-    conn.unregister("staging_df")
+    rows_imported = _upsert_df(conn, staging_df, etype, source)
 
     # Record in export history
     conn.execute(
@@ -357,19 +523,8 @@ def ingest_xlsx(
     conn.close()
     logger.info("Ingestion complete: %d rows into %s", rows_imported, etype)
 
-    # Archive processed file
     if archive_dir:
-        archive_dir = str(Path(archive_dir).expanduser().resolve())
-        Path(archive_dir).mkdir(parents=True, exist_ok=True)
-        dest = Path(archive_dir) / Path(xlsx_path).name
-        # Avoid overwrite by appending timestamp if file exists
-        if dest.exists():
-            stem = dest.stem
-            suffix = dest.suffix
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            dest = dest.with_name(f"{stem}_{ts}{suffix}")
-        shutil.move(xlsx_path, str(dest))
-        logger.info("Archived file to %s", dest)
+        _archive_file(xlsx_path, archive_dir)
 
     return {
         "export_type": etype,
@@ -378,3 +533,17 @@ def ingest_xlsx(
         "file_path": xlsx_path,
         "skipped": False,
     }
+
+
+def _archive_file(xlsx_path: str, archive_dir: str) -> None:
+    """Move a processed file to the archive directory."""
+    archive_dir = str(Path(archive_dir).expanduser().resolve())
+    Path(archive_dir).mkdir(parents=True, exist_ok=True)
+    dest = Path(archive_dir) / Path(xlsx_path).name
+    if dest.exists():
+        stem = dest.stem
+        suffix = dest.suffix
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        dest = dest.with_name(f"{stem}_{ts}{suffix}")
+    shutil.move(xlsx_path, str(dest))
+    logger.info("Archived file to %s", dest)

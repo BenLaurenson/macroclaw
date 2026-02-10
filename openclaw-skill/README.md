@@ -7,7 +7,6 @@ through a conversational interface.
 ## Prerequisites
 
 - Python 3.11 or later
-- Java runtime (for SikuliX automation)
 - The MacroClaw CLI installed (`pip3 install -e ~/projects/macroclaw`)
 - A DuckDB database initialized with `macroclaw init`
 
@@ -39,14 +38,8 @@ Reload your shell or run `source ~/.zshrc` after editing.
 Copy or symlink the skill directory into your OpenClaw skills path:
 
 ```bash
-# If OpenClaw looks for skills in ~/.openclaw/skills/
-ln -s ~/projects/macroclaw/openclaw-skill ~/.openclaw/skills/macroclaw
-```
-
-Or register it directly if OpenClaw supports a registration command:
-
-```bash
-openclaw skill install ~/projects/macroclaw/openclaw-skill
+# Symlink into the OpenClaw workspace skills directory
+ln -s ~/projects/macroclaw/openclaw-skill ~/.openclaw/workspace/skills/macroclaw
 ```
 
 ### 4. Verify the Installation
@@ -61,7 +54,7 @@ macroclaw status
 ls -la "$MACROCLAW_DB_PATH"
 
 # Verify the skill is loaded
-openclaw skill list | grep -i macroclaw
+openclaw skills list | grep -i macroclaw
 ```
 
 ## Environment Variables
@@ -81,8 +74,8 @@ macroclaw init
 # Check system status
 macroclaw status
 
-# Import sample data (if available)
-macroclaw import ~/projects/macroclaw/tests/sample_data/
+# Import an export file
+macroclaw ingest ~/Downloads/MacroFactor-*.xlsx
 
 # Run a summary
 macroclaw summary

@@ -1,14 +1,7 @@
 ---
-metadata:
-  openclaw:
-    emoji: "\U0001F4AA"
-    requires:
-      bins:
-        - python3
-      env:
-        - MACROCLAW_DB_PATH
-        - ANTHROPIC_API_KEY
-    install: "pip3 install -e ~/Projects/macroclaw"
+name: macroclaw
+description: Query and display nutrition, workout, and weight-tracking data from the MacroClaw pipeline. Use when user asks about food intake, macros, workouts, body weight, or fitness progress.
+metadata: {"clawdbot":{"emoji":"💪","requires":{"bins":["macroclaw"],"env":["MACROCLAW_DB_PATH"]},"install":"pip3 install -e ~/projects/macroclaw"}}
 ---
 
 # MacroClaw - Fitness Dashboard

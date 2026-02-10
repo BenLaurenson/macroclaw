@@ -1,0 +1,13 @@
+{
+  "name": "@openclaw-skill/macroclaw",
+  "version": "1.0.0",
+  "description": "Fitness data pipeline - query nutrition, workouts, and weight from MacroFactor via DuckDB",
+  "keywords": [
+    "openclaw-skill",
+    "fitness",
+    "nutrition",
+    "macros",
+    "workouts",
+    "weight"
+  ]
+}

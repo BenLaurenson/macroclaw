@@ -137,6 +137,10 @@ def ingest(ctx: click.Context, file: str, export_type: str | None) -> None:
     )
     if stats["skipped"]:
         click.echo(f"Skipped (already imported): {file}")
+    elif stats["export_type"] == "bulk":
+        click.echo(f"Imported {stats['rows_imported']} rows (bulk) from {file}")
+        for sheet, count in stats.get("sheet_stats", {}).items():
+            click.echo(f"  {sheet}: {count} rows")
     else:
         click.echo(
             f"Imported {stats['rows_imported']} rows "

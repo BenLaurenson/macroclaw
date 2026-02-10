@@ -55,6 +55,16 @@ macroclaw auto record daily
 macroclaw auto daily
 ```
 
+### Manual import
+
+Seed the database from a MacroFactor all-time export or ingest a daily `.xlsx`:
+
+```bash
+macroclaw ingest ~/Downloads/MacroFactor-*.xlsx
+```
+
+Bulk (all-time) exports with multiple sheets are auto-detected and processed.
+
 ### Data queries
 
 ```bash
