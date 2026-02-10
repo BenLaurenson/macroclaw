@@ -11,3 +11,10 @@ sikuli:
 export:
   daily_time: "21:00"
   bulk_schedule: "weekly"  # weekly, monthly, or manual
+
+computer_use:
+  model: "claude-sonnet-4-5"       # claude-sonnet-4-5 or claude-opus-4-6
+  max_iterations: 50               # safety cap on API round-trips
+  download_timeout_daily: 30       # seconds to wait for daily export download
+  download_timeout_bulk: 120       # seconds to wait for bulk export download
+  # Requires ANTHROPIC_API_KEY environment variable
