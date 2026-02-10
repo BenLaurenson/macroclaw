@@ -1,0 +1,13 @@
+macroclaw:
+  db_path: "~/projects/macroclaw/data/macroclaw.duckdb"
+  imports_dir: "~/projects/macroclaw/data/imports"
+  archive_dir: "~/projects/macroclaw/data/archive"
+
+sikuli:
+  java_path: "/usr/bin/java"
+  sikulix_jar: "~/sikulix/sikulixide-2.0.6.jar"
+  similarity_threshold: 0.85
+
+export:
+  daily_time: "21:00"
+  bulk_schedule: "weekly"  # weekly, monthly, or manual

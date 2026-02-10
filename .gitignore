@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+dist/
+*.egg-info/
+
+# Data -- exported files and database
+data/imports/*.xlsx
+data/archive/*
+data/*.duckdb
+data/*.duckdb.wal
+
+# SikuliX -- reference screenshots are user-specific and must be captured locally
+sikuli/images/*.png
+sikuli/*.jar
+
+# Config -- local config is git-ignored; example config is committed
+config/config.yaml
+
+# Logs
+logs/*.log
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

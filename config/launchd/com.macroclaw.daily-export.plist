@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+
+    <key>Label</key>
+    <string>com.macroclaw.daily-export</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-l</string>
+        <string>-c</string>
+        <string>/Users/ben/projects/macroclaw/sikuli/scripts/daily_export.sh</string>
+    </array>
+
+    <!-- Run every day at 21:00 (9 PM) -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>21</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- Environment variables available to the job -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>HOME</key>
+        <string>/Users/ben</string>
+        <key>MACROCLAW_DB_PATH</key>
+        <string>/Users/ben/projects/macroclaw/data/macroclaw.duckdb</string>
+    </dict>
+
+    <!-- Log output -->
+    <key>StandardOutPath</key>
+    <string>/tmp/macroclaw-daily-export.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/macroclaw-daily-export.log</string>
+
+    <!-- Do not restart on failure; wait for next scheduled run -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- Working directory -->
+    <key>WorkingDirectory</key>
+    <string>/Users/ben/projects/macroclaw</string>
+
+</dict>
+</plist>

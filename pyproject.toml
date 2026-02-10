@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "macroclaw"
+version = "0.1.0"
+description = "Automated MacroFactor data pipeline for OpenClaw"
+requires-python = ">=3.11"
+authors = []
+license = { text = "MIT" }
+readme = "README.md"
+
+dependencies = [
+    "duckdb>=1.0.0",
+    "openpyxl>=3.1.0",
+    "pandas>=2.1.0",
+    "watchdog>=4.0.0",
+    "pyyaml>=6.0",
+    "click>=8.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "black>=24.0.0",
+    "ruff>=0.3.0",
+]
+
+[project.scripts]
+macroclaw = "pipeline.cli:cli"
+
+[tool.setuptools.packages.find]
+include = ["pipeline*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
